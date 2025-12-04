@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   Linking,
@@ -49,7 +50,9 @@ const ProfileScreen = ({ navigation }) => {
       try {
         const user = auth.currentUser;
         if (!user) {
+          // No logged-in user — stop loading and return to avoid infinite spinner
           console.log("No user is logged in");
+          setLoading(false);
           return;
         }
 
@@ -113,18 +116,35 @@ const ProfileScreen = ({ navigation }) => {
   // console.log("Created evetns are", createdEventsToBeRendered);
   // console.log("Regisetered events")
 
-  const handleViewCertificate = (event) => {
-    const currentUserId = auth.currentUser.uid;
+  const handleViewCertificate = async (event) => {
+    const currentUserId = auth.currentUser?.uid;
     if (!currentUserId) {
-      console.log("User not logged in");
+      Alert.alert('Not logged in', 'Please login to view certificates.');
       return;
     }
-    console.log("UserID is: ", currentUserId);
-    console.log("Event id is: ", event.id);
-    // return;
+    if (!event?.id) {
+      Alert.alert('Invalid event', 'Event id is missing.');
+      return;
+    }
+
+    // Build download URL
     const baseUrl = axiosInstance.defaults.baseURL;
-    const url = `${baseUrl}/download-certificate/${currentUserId}/${event.id}`;
-    Linking.openURL(url).catch((err) => console.log("Error in opening the url: ", err));
+    const urlPath = `/download-certificate/${currentUserId}/${event.id}`;
+    const url = `${baseUrl}${urlPath}`;
+
+    try {
+      // Validate the endpoint before opening. If backend responds with an error JSON
+      // this will be caught and a friendly message shown instead of opening a blank page.
+      await axiosInstance.get(urlPath, { responseType: 'arraybuffer', timeout: 8000 });
+      Linking.openURL(url).catch((err) => {
+        console.log('Error opening certificate URL:', err);
+        Alert.alert('Unable to open', 'Failed to open certificate URL.');
+      });
+    } catch (err) {
+      const serverMessage = err?.response?.data?.error || err?.response?.data || err.message;
+      console.log('Certificate check failed:', serverMessage);
+      Alert.alert('Certificate unavailable', String(serverMessage));
+    }
   };
 
   if (loading) {
